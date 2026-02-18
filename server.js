@@ -23,18 +23,29 @@ connectDB();
 const app = express();
 
 // CORS configuration — allow common local dev origins and the configured FRONTEND_URL
-const allowedOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:3000",
+const normalizeOrigin = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+const configuredOrigins = String(process.env.FRONTEND_URL || "")
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  "http://localhost:3000",
   "http://localhost:3001",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3001",
-];
+]);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true); // allow non-browser requests like curl/postman
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedOrigins.has(normalizeOrigin(origin))) return callback(null, true);
       console.warn("Blocked CORS request from origin:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -44,6 +55,9 @@ app.use(
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 // Log each incoming request for debugging
 app.use((req, res, next) => {
