@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import connectDB from "../config/db.js";
+import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import Event from "../models/Event.js";
 import Booking from "../models/Booking.js";
@@ -11,8 +12,14 @@ const users = [
     name: "Alice Organizer",
     email: "alice@events.com",
     password: "password123",
+    plan: "premium",
   },
-  { name: "Bob Attendee", email: "bob@users.com", password: "password123" },
+  {
+    name: "Bob Attendee",
+    email: "bob@users.com",
+    password: "password123",
+    plan: "free",
+  },
 ];
 
 const eventsTemplate = [
@@ -102,10 +109,17 @@ const seed = async () => {
   try {
     await connectDB();
 
-    // Create users (will hash their passwords via existing auth flow when they register; here we store plain for simplicity)
-    // Remove existing sample users by email first to avoid duplicates
+    // Remove existing sample users by email first to avoid duplicates.
     await User.deleteMany({ email: { $in: users.map((u) => u.email) } });
-    const createdUsers = await User.insertMany(users);
+
+    const usersToInsert = await Promise.all(
+      users.map(async (user) => ({
+        ...user,
+        password: await bcrypt.hash(user.password, 10),
+      })),
+    );
+
+    const createdUsers = await User.insertMany(usersToInsert);
     console.log(`Created ${createdUsers.length} users`);
 
     const organizer = createdUsers[0];

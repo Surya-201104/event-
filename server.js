@@ -19,32 +19,20 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import supportRoutes from "./routes/supportRoutes.js";
 
-/* =========================
-   CONNECT DATABASE
-========================= */
-
 connectDB();
-
-/* =========================
-   INIT APP
-========================= */
-
 const app = express();
-
-/* =========================
-   SECURITY MIDDLEWARE
-========================= */
-
 app.use(helmet());
-
-/* =========================
-   CORS CONFIG
-========================= */
-
 const normalizeOrigin = (value) =>
-  String(value || "")
-    .trim()
-    .replace(/\/+$/, "");
+  (() => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+
+    try {
+      return new URL(raw).origin.toLowerCase();
+    } catch {
+      return raw.replace(/\/+$/, "").toLowerCase();
+    }
+  })();
 
 const configuredOrigins = String(process.env.FRONTEND_URL || "")
   .split(",")
@@ -67,7 +55,9 @@ app.use(
         return callback(null, true);
 
       console.warn("Blocked CORS request from origin:", origin);
-      return callback(new Error("Not allowed by CORS"));
+      const corsError = new Error("Not allowed by CORS");
+      corsError.status = 403;
+      return callback(corsError);
     },
     credentials: true,
   }),

@@ -2,7 +2,16 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import connectDB from "../config/db.js";
+import bcrypt from "bcryptjs";
 import Event from "../models/Event.js";
+import User from "../models/User.js";
+
+const seedOrganizer = {
+  name: "Seed Organizer",
+  email: "seed-organizer@events.com",
+  password: "password123",
+  plan: "premium",
+};
 
 const sampleEvents = [
   {
@@ -111,11 +120,53 @@ const seed = async () => {
   try {
     await connectDB();
 
+    let organizer = await User.findOne({ email: seedOrganizer.email });
+
+    if (!organizer) {
+      organizer = await User.create({
+        ...seedOrganizer,
+        password: await bcrypt.hash(seedOrganizer.password, 10),
+      });
+      console.log(`Created seed organizer: ${organizer.email}`);
+    }
+
     await Event.deleteMany({
       title: { $in: sampleEvents.map((event) => event.title) },
     });
 
-    const inserted = await Event.insertMany(sampleEvents);
+    const eventsToInsert = sampleEvents.map((event) => ({
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      venue: event.venue,
+      location: event.location,
+      price: Number(event.price || 0),
+      createdBy: organizer._id,
+      eventAdmins: [organizer._id],
+      organizerName: organizer.name,
+      organizerContact: organizer.email,
+      media: event.imageUrl
+        ? [
+            {
+              type: "image",
+              url: event.imageUrl,
+            },
+          ]
+        : [],
+      ticketTypes: [
+        {
+          name: "General Admission",
+          price: Number(event.price || 0),
+          quantity: 100,
+          sold: 0,
+          description: "",
+        },
+      ],
+      approvalStatus: "approved",
+      approvalNote: "Seeded data",
+    }));
+
+    const inserted = await Event.insertMany(eventsToInsert);
     console.log(`Inserted ${inserted.length} events`);
     process.exit(0);
   } catch (err) {

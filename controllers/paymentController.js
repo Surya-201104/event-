@@ -1,10 +1,22 @@
-import crypto from "crypto";
+﻿import crypto from "crypto";
+import mongoose from "mongoose";
 import razorpay, {
   isRazorpayConfigured,
   isMockGateway,
 } from "../utils/payment.js";
 import Event from "../models/Event.js";
 import Booking from "../models/Booking.js";
+
+const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(String(value));
+
+const ALLOWED_PAYMENT_METHODS = new Set([
+  "upi",
+  "card",
+  "netbanking",
+  "wallet",
+  "emi",
+  "paylater",
+]);
 
 const parseQuantity = (value) => {
   const parsed = Number(value);
@@ -24,17 +36,7 @@ const sanitizeContact = (value) =>
 
 const sanitizeMethod = (value) => {
   const normalized = sanitizeText(value, 30).toLowerCase();
-  const allowed = new Set([
-    "upi",
-    "card",
-    "netbanking",
-    "wallet",
-    "emi",
-    "paylater",
-    "free",
-  ]);
-
-  return allowed.has(normalized) ? normalized : "";
+  return ALLOWED_PAYMENT_METHODS.has(normalized) ? normalized : "";
 };
 
 const normalizePaymentDetails = (payment, fallback = {}) => {
@@ -139,6 +141,13 @@ const buildEmailNotification = (email) => ({
 
 export const createOrder = async (req, res) => {
   try {
+    if (!req.user?._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
     const {
       eventId,
       quantity,
@@ -159,6 +168,13 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
     const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({
@@ -174,7 +190,7 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    const userPlan = req.user.plan || "free";
+    const userPlan = req.user?.plan || "free";
     if (event.isPremiumOnly && userPlan !== "premium") {
       return res.status(403).json({
         success: false,
@@ -216,6 +232,13 @@ export const createOrder = async (req, res) => {
     }
 
     const totalAmount = ticketSelection.ticketUnitPrice * normalizedQuantity;
+
+    if (!Number.isFinite(totalAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket pricing for selected event",
+      });
+    }
 
     if (totalAmount <= 0) {
       const freeBooking = await Booking.create({
@@ -317,7 +340,7 @@ export const createOrder = async (req, res) => {
       attendee,
     });
   } catch (error) {
-    console.error("Order creation error:", error.message);
+    console.error("Order creation error:", error);
     return res.status(500).json({
       success: false,
       message: "Order creation failed",
@@ -328,6 +351,13 @@ export const createOrder = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   try {
+    if (!req.user?._id) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
     const {
       eventId,
       quantity,
@@ -356,6 +386,13 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
+    if (!isValidObjectId(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event ID",
+      });
+    }
+
     const event = await Event.findById(eventId);
     if (!event) {
       return res.status(404).json({
@@ -371,7 +408,7 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    const userPlan = req.user.plan || "free";
+    const userPlan = req.user?.plan || "free";
     if (event.isPremiumOnly && userPlan !== "premium") {
       return res.status(403).json({
         success: false,
@@ -398,6 +435,14 @@ export const verifyPayment = async (req, res) => {
     }
 
     const totalAmount = ticketSelection.ticketUnitPrice * normalizedQuantity;
+
+    if (!Number.isFinite(totalAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ticket pricing for selected event",
+      });
+    }
+
     if (totalAmount <= 0) {
       return res.status(400).json({
         success: false,
@@ -533,7 +578,7 @@ export const verifyPayment = async (req, res) => {
       ),
     });
   } catch (error) {
-    console.error("Payment verification error:", error.message);
+    console.error("Payment verification error:", error);
     return res.status(500).json({
       success: false,
       message: "Payment verification failed",
@@ -541,3 +586,4 @@ export const verifyPayment = async (req, res) => {
     });
   }
 };
+
