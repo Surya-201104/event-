@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 
 import express from "express";
 import cors from "cors";
+import helmet from "helmet"; 
 import connectDB from "./config/db.js";
 
 import authRoutes from "./routes/authRoutes.js";
@@ -18,11 +19,28 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import supportRoutes from "./routes/supportRoutes.js";
 
+/* =========================
+   CONNECT DATABASE
+========================= */
+
 connectDB();
+
+/* =========================
+   INIT APP
+========================= */
 
 const app = express();
 
-// CORS configuration — allow common local dev origins and the configured FRONTEND_URL
+/* =========================
+   SECURITY MIDDLEWARE
+========================= */
+
+app.use(helmet());
+
+/* =========================
+   CORS CONFIG
+========================= */
+
 const normalizeOrigin = (value) =>
   String(value || "")
     .trim()
@@ -44,8 +62,10 @@ const allowedOrigins = new Set([
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow non-browser requests like curl/postman
-      if (allowedOrigins.has(normalizeOrigin(origin))) return callback(null, true);
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(normalizeOrigin(origin)))
+        return callback(null, true);
+
       console.warn("Blocked CORS request from origin:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -54,17 +74,28 @@ app.use(
 );
 
 app.use(express.json());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+app.use(express.urlencoded({ extended: true }));
 
-// Log each incoming request for debugging
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 app.use((req, res, next) => {
   console.log(
     `${new Date().toISOString()} -> ${req.method} ${req.originalUrl}`,
   );
   next();
+});
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    message: "Event backend is running",
+    health: "/api/health",
+    events: "/api/events",
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 app.use("/api/auth", authRoutes);
@@ -74,6 +105,22 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/support", supportRoutes);
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
+app.use((req, res) => {
+  res.status(404).json({
+    message: `Route not found: ${req.originalUrl}`,
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Global Error:", err.message);
+
+  res.status(err.status || 500).json({
+    message: err.message || "Server Error",
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });

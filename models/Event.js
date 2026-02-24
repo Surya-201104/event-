@@ -17,12 +17,11 @@ const ticketTypeSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 1,
-      default: 1,
     },
     sold: {
       type: Number,
-      min: 0,
       default: 0,
+      min: 0,
     },
     description: {
       type: String,
@@ -41,23 +40,28 @@ const scheduleItemSchema = new mongoose.Schema(
       trim: true,
       maxlength: 100,
     },
-    startTime: {
+    startTime: { type: String, default: "" },
+    endTime: { type: String, default: "" },
+    speaker: { type: String, default: "", maxlength: 100 },
+    description: { type: String, default: "", maxlength: 300 },
+  },
+  { _id: true },
+);
+
+const mediaSchema = new mongoose.Schema(
+  {
+    type: {
       type: String,
-      default: "",
+      enum: ["image", "video"],
+      required: true,
     },
-    endTime: {
+    url: {
       type: String,
-      default: "",
+      required: true,
     },
-    speaker: {
-      type: String,
+    public_id: {
+      type: String, 
       default: "",
-      maxlength: 100,
-    },
-    description: {
-      type: String,
-      default: "",
-      maxlength: 300,
     },
   },
   { _id: true },
@@ -68,100 +72,123 @@ const eventSchema = new mongoose.Schema(
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null,
+      required: true,
     },
+
     eventAdmins: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
       },
     ],
+
     organizerName: {
       type: String,
-      default: "",
+      required: true,
+      trim: true,
     },
+
     organizerContact: {
       type: String,
       default: "",
+      trim: true,
     },
+
     title: {
       type: String,
       required: true,
+      trim: true,
+      maxlength: 120,
     },
+
     description: {
       type: String,
       required: true,
+      maxlength: 2000,
     },
+
     category: {
       type: String,
       default: "general",
       trim: true,
     },
+
     date: {
       type: Date,
       required: true,
     },
-    startTime: {
-      type: String,
-      default: "",
-    },
-    endTime: {
-      type: String,
-      default: "",
-    },
+
+    startTime: { type: String, default: "" },
+    endTime: { type: String, default: "" },
+
     venue: {
       type: String,
       required: true,
+      trim: true,
     },
+
     location: {
       type: String,
       default: "",
     },
+
     price: {
       type: Number,
       required: true,
+      min: 0,
     },
-    image: {
-      type: String,
-      default: "",
+
+    media: {
+      type: [mediaSchema],
+      default: [],
     },
-    imageUrl: {
-      type: String,
-      default: "",
-    },
-    videoUrl: {
-      type: String,
-      default: "",
-    },
+
     ticketTypes: {
       type: [ticketTypeSchema],
       default: [],
     },
+
     schedule: {
       type: [scheduleItemSchema],
       default: [],
     },
+
     approvalStatus: {
       type: String,
       enum: ["pending", "approved", "rejected"],
       default: "approved",
     },
+
     approvalNote: {
       type: String,
       default: "",
       maxlength: 300,
     },
+
     lastScheduleUpdate: {
       type: Date,
       default: null,
     },
+
     isPremiumOnly: {
       type: Boolean,
       default: false,
     },
+
     premiumPerks: {
       type: String,
       default: "",
+      maxlength: 500,
+    },
+
+    views: {
+      type: Number,
+      default: 0,
+    },
+
+    totalRevenue: {
+      type: Number,
+      default: 0,
     },
   },
   { timestamps: true },
