@@ -105,6 +105,39 @@ const escapeCsvValue = (value) => {
   return normalized;
 };
 
+const normalizeMediaUrl = (value) => sanitizeText(value, 500);
+
+const buildMediaFromFiles = (files) =>
+  (Array.isArray(files) ? files : [])
+    .map((file) => {
+      const type = file?.mimetype?.startsWith("video") ? "video" : "image";
+      const folder = type === "video" ? "videos" : "images";
+      return {
+        type,
+        url: `/uploads/${folder}/${file.filename}`,
+      };
+    })
+    .filter((item) => item.url);
+
+const mergeMediaItems = (...collections) => {
+  const merged = [];
+  const seen = new Set();
+
+  collections.flat().forEach((item) => {
+    const type = String(item?.type || "").toLowerCase() === "video" ? "video" : "image";
+    const url = normalizeMediaUrl(item?.url);
+    if (!url) return;
+
+    const key = `${type}:${url}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    merged.push({ type, url });
+  });
+
+  return merged;
+};
+
 /* =========================
    CREATE EVENT
 ========================= */
@@ -123,6 +156,8 @@ export const createEvent = async (req, res) => {
       category,
       ticketTypes,
       schedule,
+      imageUrl,
+      videoUrl,
       isPremiumOnly,
       premiumPerks,
     } = req.body;
@@ -136,11 +171,13 @@ export const createEvent = async (req, res) => {
     const minTicketPrice = getMinimumTicketPrice(normalizedTicketTypes, price);
     const normalizedSchedule = normalizeSchedule(schedule);
 
-    const media =
-      req.files?.map((file) => ({
-        type: file.mimetype.startsWith("image") ? "image" : "video",
-        url: `/uploads/${file.filename}`,
-      })) || [];
+    const media = mergeMediaItems(
+      [
+        { type: "image", url: imageUrl },
+        { type: "video", url: videoUrl },
+      ],
+      buildMediaFromFiles(req.files),
+    ).slice(0, 5);
 
     const systemAdmin = !!req.user?.isAdmin;
     const hasSystemAdmin = !!(await User.exists({ isAdmin: true }));
@@ -245,14 +282,20 @@ export const updateEvent = async (req, res) => {
       sanitizeText(req.body.description, 5000) || event.description;
     event.category = toSlug(req.body.category) || event.category;
     event.date = req.body.date || event.date;
+    event.startTime = sanitizeText(req.body.startTime, 20) || event.startTime;
+    event.endTime = sanitizeText(req.body.endTime, 20) || event.endTime;
 
-    if (req.files && req.files.length > 0) {
-      const newMedia = req.files.map((file) => ({
-        type: file.mimetype.startsWith("image") ? "image" : "video",
-        url: `/uploads/${file.filename}`,
-      }));
+    const uploadedMedia = buildMediaFromFiles(req.files);
+    const bodyMedia = mergeMediaItems([
+      { type: "image", url: req.body.imageUrl },
+      { type: "video", url: req.body.videoUrl },
+    ]);
 
-      event.media = [...(event.media || []), ...newMedia];
+    if (uploadedMedia.length > 0 || bodyMedia.length > 0) {
+      event.media = mergeMediaItems(event.media || [], bodyMedia, uploadedMedia).slice(
+        0,
+        5,
+      );
     }
 
     if (!req.user?.isAdmin) {
