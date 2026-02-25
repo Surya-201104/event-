@@ -39,6 +39,41 @@ const configuredOrigins = String(process.env.FRONTEND_URL || "")
   .map(normalizeOrigin)
   .filter(Boolean);
 
+const netlifySiteHosts = new Set(
+  configuredOrigins
+    .map((origin) => {
+      try {
+        const { hostname } = new URL(origin);
+        const match = hostname
+          .toLowerCase()
+          .match(/^([a-z0-9-]+)\.netlify\.app$/);
+        return match ? match[1] : "";
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean),
+);
+
+const isAllowedNetlifyPreviewOrigin = (origin) => {
+  if (!netlifySiteHosts.size) return false;
+
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol !== "https:") return false;
+
+    const match = hostname
+      .toLowerCase()
+      .match(/^(?:[a-z0-9-]+--)?([a-z0-9-]+)\.netlify\.app$/);
+    if (!match) return false;
+
+    const siteHost = match[1];
+    return netlifySiteHosts.has(siteHost);
+  } catch {
+    return false;
+  }
+};
+
 const allowedOrigins = new Set([
   ...configuredOrigins,
   "http://localhost:3000",
@@ -51,7 +86,12 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.has(normalizeOrigin(origin)))
+
+      const normalizedOrigin = normalizeOrigin(origin);
+      if (
+        allowedOrigins.has(normalizedOrigin) ||
+        isAllowedNetlifyPreviewOrigin(normalizedOrigin)
+      )
         return callback(null, true);
 
       console.warn("Blocked CORS request from origin:", origin);
