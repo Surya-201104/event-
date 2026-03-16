@@ -21,7 +21,14 @@ import supportRoutes from "./routes/supportRoutes.js";
 
 connectDB();
 const app = express();
-app.use(helmet());
+app.use(
+  helmet({
+    // Allow serving uploaded assets to frontends hosted on a different origin
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // Disable COEP to avoid blocking image/video embeds that lack explicit CORS
+    crossOriginEmbedderPolicy: false,
+  }),
+);
 const normalizeOrigin = (value) =>
   (() => {
     const raw = String(value || "").trim();

@@ -14,15 +14,17 @@ import protect from "../middleware/authMiddleware.js";
 import admin from "../middleware/adminMiddleware.js";
 import eventAdmin from "../middleware/eventAdminMiddleware.js";
 import upload from "../middleware/uploadMiddleware.js";
+import organizerOnly from "../middleware/organizerMiddleware.js";
 
 const router = express.Router();
 router.get("/", getEvents);
-router.get("/:id", getEventById);
-router.get("/manage/mine", protect, getManageableEvents);
+router.get("/manage/mine", protect, organizerOnly, getManageableEvents);
 router.get("/:id/attendees/export", protect, eventAdmin, exportEventAttendees);
+router.get("/:id", getEventById);
 router.post(
   "/",
   protect,
+  organizerOnly,
   upload.array("media", 5), 
   createEvent,
 );

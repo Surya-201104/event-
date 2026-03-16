@@ -3,24 +3,24 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 // Generate Token Function
-const generateToken = (user) => {
-  return jwt.sign(
+const generateToken = (user) =>
+  jwt.sign(
     {
       id: user._id,
       email: user.email,
       name: user.name,
-      isAdmin: user.isAdmin,
+      role: user.role || (user.isAdmin ? "admin" : "attendee"),
+      isAdmin: user.isAdmin, // retained for backward compatibility with existing checks
       plan: user.plan || "free",
     },
     process.env.JWT_SECRET,
     { expiresIn: "1d" },
   );
-};
 
 // REGISTER
 export const register = async (req, res) => {
   try {
-    const { name, email, password, plan } = req.body;
+    const { name, email, password, plan, role } = req.body;
 
     const exists = await User.findOne({ email });
     if (exists) {
@@ -29,10 +29,16 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const normalizedRole =
+      role === "organizer" || role === "admin" ? role : "attendee";
+    const allowAdminSelfSignup = false;
+
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
+      role: allowAdminSelfSignup ? normalizedRole : normalizedRole === "admin" ? "attendee" : normalizedRole,
+      isAdmin: normalizedRole === "admin",
       plan: plan === "premium" ? "premium" : "free",
       premiumSince: plan === "premium" ? new Date() : null,
     });
@@ -41,6 +47,7 @@ export const register = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role || "attendee",
       isAdmin: user.isAdmin,
       plan: user.plan,
       premiumSince: user.premiumSince,
@@ -72,6 +79,7 @@ export const login = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role || (user.isAdmin ? "admin" : "attendee"),
       isAdmin: user.isAdmin,
       plan: user.plan || "free",
       premiumSince: user.premiumSince || null,
@@ -89,6 +97,7 @@ export const getMe = async (req, res) => {
       _id: req.user._id,
       name: req.user.name,
       email: req.user.email,
+      role: req.user.role || (req.user.isAdmin ? "admin" : "attendee"),
       isAdmin: req.user.isAdmin || false,
       plan: req.user.plan || "free",
       premiumSince: req.user.premiumSince || null,
@@ -120,6 +129,7 @@ export const upgradeToPremium = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role || (user.isAdmin ? "admin" : "attendee"),
         isAdmin: user.isAdmin || false,
         plan: user.plan,
         premiumSince: user.premiumSince,
@@ -135,7 +145,7 @@ export const upgradeToPremium = async (req, res) => {
 export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find()
-      .select("_id name email isAdmin plan premiumSince createdAt")
+      .select("_id name email role isAdmin plan premiumSince createdAt")
       .sort({ createdAt: -1 });
     res.json(users);
   } catch (error) {
@@ -151,8 +161,19 @@ export const updateUserAccount = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (typeof req.body.isAdmin !== "undefined") {
+    if (typeof req.body.role !== "undefined") {
+      const normalizedRole = ["attendee", "organizer", "admin"].includes(
+        req.body.role,
+      )
+        ? req.body.role
+        : user.role;
+      user.role = normalizedRole;
+      user.isAdmin = normalizedRole === "admin";
+    } else if (typeof req.body.isAdmin !== "undefined") {
       user.isAdmin = req.body.isAdmin === true || req.body.isAdmin === "true";
+      if (user.isAdmin) {
+        user.role = "admin";
+      }
     }
 
     if (typeof req.body.plan !== "undefined") {
@@ -171,10 +192,57 @@ export const updateUserAccount = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role || (user.isAdmin ? "admin" : "attendee"),
         isAdmin: user.isAdmin || false,
         plan: user.plan || "free",
         premiumSince: user.premiumSince || null,
       },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// SELF-SERVE: BECOME ORGANIZER
+export const becomeOrganizer = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "organizer" || user.role === "admin") {
+      return res.json({
+        message: "You are already an organizer",
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          isAdmin: user.isAdmin || false,
+          plan: user.plan || "free",
+          premiumSince: user.premiumSince || null,
+        },
+        token: generateToken(user),
+      });
+    }
+
+    user.role = "organizer";
+    user.isAdmin = user.isAdmin === true ? true : false;
+    await user.save();
+
+    return res.json({
+      message: "Organizer access enabled. You can now create events.",
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isAdmin: user.isAdmin || false,
+        plan: user.plan || "free",
+        premiumSince: user.premiumSince || null,
+      },
+      token: generateToken(user),
     });
   } catch (error) {
     return res.status(500).json({ message: error.message });
